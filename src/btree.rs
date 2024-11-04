@@ -9,7 +9,7 @@ use std::convert::TryFrom;
 use std::path::Path;
 
 /// B+Tree properties.
-pub const MAX_BRANCHING_FACTOR: usize = 200;
+pub const MAX_BRANCHING_FACTOR: usize = 154;
 pub const NODE_KEYS_LIMIT: usize = MAX_BRANCHING_FACTOR - 1;
 
 /// BTree struct represents an on-disk B+tree.
@@ -197,7 +197,7 @@ impl BTree {
     }
 
     /// search searches for a specific key in the BTree.
-    pub fn search(&mut self, key: String) -> Result<KeyValuePair, Error> {
+    pub fn search(&mut self, key: &[u8; 16]) -> Result<KeyValuePair, Error> {
         let root_offset = self.wal.get_root()?;
         let root_page = self.pager.get_page(&root_offset)?;
         let root = Node::try_from(root_page)?;
@@ -205,11 +205,11 @@ impl BTree {
     }
 
     /// search_node recursively searches a sub tree rooted at node for a key.
-    fn search_node(&mut self, node: Node, search: &str) -> Result<KeyValuePair, Error> {
+    fn search_node(&mut self, node: Node, search: &[u8; 16]) -> Result<KeyValuePair, Error> {
         match node.node_type {
             NodeType::Internal(children, keys) => {
                 let idx = keys
-                    .binary_search(&Key(search.to_string()))
+                    .binary_search(&Key(search.clone()))
                     .unwrap_or_else(|x| x);
                 // Retrieve child page from disk and deserialize.
                 let child_offset = children.get(idx).ok_or(Error::UnexpectedError)?;
@@ -219,7 +219,7 @@ impl BTree {
             }
             NodeType::Leaf(pairs) => {
                 if let Ok(idx) =
-                    pairs.binary_search_by_key(&search.to_string(), |pair| pair.key.clone())
+                    pairs.binary_search_by_key(search, |pair| pair.key.clone())
                 {
                     return Ok(pairs[idx].clone());
                 }
@@ -415,6 +415,7 @@ impl BTree {
 
 #[cfg(test)]
 mod tests {
+    use uuid::Uuid;
     use crate::error::Error;
 
     #[test]
@@ -423,20 +424,23 @@ mod tests {
         use crate::node_type::KeyValuePair;
         use std::path::Path;
 
+        let id_a = Uuid::now_v7();
+        let id_b = Uuid::now_v7();
+        let id_c = Uuid::now_v7();
         let mut btree = BTreeBuilder::new()
             .path(Path::new("/tmp/db"))
             .b_parameter(2)
             .build()?;
-        btree.insert(KeyValuePair::new("a".to_string(), "shalom".to_string()))?;
-        btree.insert(KeyValuePair::new("b".to_string(), "hello".to_string()))?;
-        btree.insert(KeyValuePair::new("c".to_string(), "marhaba".to_string()))?;
+        btree.insert(KeyValuePair::new(id_a.into_bytes(), "shalom".to_string()))?;
+        btree.insert(KeyValuePair::new(id_b.into_bytes(), "hello".to_string()))?;
+        btree.insert(KeyValuePair::new(id_c.into_bytes(), "marhaba".to_string()))?;
 
-        let mut kv = btree.search("b".to_string())?;
-        assert_eq!(kv.key, "b");
+        let mut kv = btree.search(&id_b.into_bytes())?;
+        assert_eq!(kv.key, id_b.into_bytes());
         assert_eq!(kv.value, "hello");
 
-        kv = btree.search("c".to_string())?;
-        assert_eq!(kv.key, "c");
+        kv = btree.search(&id_c.into_bytes())?;
+        assert_eq!(kv.key, id_c.into_bytes());
         assert_eq!(kv.value, "marhaba");
 
         Ok(())
@@ -452,50 +456,59 @@ mod tests {
             .path(Path::new("/tmp/db"))
             .b_parameter(2)
             .build()?;
-        btree.insert(KeyValuePair::new("a".to_string(), "shalom".to_string()))?;
-        btree.insert(KeyValuePair::new("b".to_string(), "hello".to_string()))?;
-        btree.insert(KeyValuePair::new("c".to_string(), "marhaba".to_string()))?;
-        btree.insert(KeyValuePair::new("d".to_string(), "olah".to_string()))?;
-        btree.insert(KeyValuePair::new("e".to_string(), "salam".to_string()))?;
-        btree.insert(KeyValuePair::new("f".to_string(), "hallo".to_string()))?;
-        btree.insert(KeyValuePair::new("g".to_string(), "Konnichiwa".to_string()))?;
-        btree.insert(KeyValuePair::new("h".to_string(), "Ni hao".to_string()))?;
-        btree.insert(KeyValuePair::new("i".to_string(), "Ciao".to_string()))?;
+        let a = Uuid::now_v7();
+        let b = Uuid::now_v7();
+        let c = Uuid::now_v7();
+        let d = Uuid::now_v7();
+        let e = Uuid::now_v7();
+        let f = Uuid::now_v7();
+        let g = Uuid::now_v7();
+        let h = Uuid::now_v7();
+        let i = Uuid::now_v7();
+        btree.insert(KeyValuePair::new(a.into_bytes(), "shalom".to_string()))?;
+        btree.insert(KeyValuePair::new(b.into_bytes(), "hello".to_string()))?;
+        btree.insert(KeyValuePair::new(c.into_bytes(), "marhaba".to_string()))?;
+        btree.insert(KeyValuePair::new(d.into_bytes(), "olah".to_string()))?;
+        btree.insert(KeyValuePair::new(e.into_bytes(), "salam".to_string()))?;
+        btree.insert(KeyValuePair::new(f.into_bytes(), "hallo".to_string()))?;
+        btree.insert(KeyValuePair::new(g.into_bytes(), "Konnichiwa".to_string()))?;
+        btree.insert(KeyValuePair::new(h.into_bytes(), "Ni hao".to_string()))?;
+        btree.insert(KeyValuePair::new(i.into_bytes(), "Ciao".to_string()))?;
 
-        let mut kv = btree.search("a".to_string())?;
-        assert_eq!(kv.key, "a");
+        let mut kv = btree.search(&a.into_bytes())?;
+        assert_eq!(kv.key, a.into_bytes());
         assert_eq!(kv.value, "shalom");
 
-        kv = btree.search("b".to_string())?;
-        assert_eq!(kv.key, "b");
+        kv = btree.search(&b.into_bytes())?;
+        assert_eq!(kv.key, b.into_bytes());
         assert_eq!(kv.value, "hello");
 
-        kv = btree.search("c".to_string())?;
-        assert_eq!(kv.key, "c");
+        kv = btree.search(&c.into_bytes())?;
+        assert_eq!(kv.key, c.into_bytes());
         assert_eq!(kv.value, "marhaba");
 
-        kv = btree.search("d".to_string())?;
-        assert_eq!(kv.key, "d");
+        kv = btree.search(&d.into_bytes())?;
+        assert_eq!(kv.key, d.into_bytes());
         assert_eq!(kv.value, "olah");
 
-        kv = btree.search("e".to_string())?;
-        assert_eq!(kv.key, "e");
+        kv = btree.search(&e.into_bytes())?;
+        assert_eq!(kv.key, e.into_bytes());
         assert_eq!(kv.value, "salam");
 
-        kv = btree.search("f".to_string())?;
-        assert_eq!(kv.key, "f");
+        kv = btree.search(&f.into_bytes())?;
+        assert_eq!(kv.key, f.into_bytes());
         assert_eq!(kv.value, "hallo");
 
-        kv = btree.search("g".to_string())?;
-        assert_eq!(kv.key, "g");
+        kv = btree.search(&g.into_bytes())?;
+        assert_eq!(kv.key, g.into_bytes());
         assert_eq!(kv.value, "Konnichiwa");
 
-        kv = btree.search("h".to_string())?;
-        assert_eq!(kv.key, "h");
+        kv = btree.search(&h.into_bytes())?;
+        assert_eq!(kv.key, h.into_bytes());
         assert_eq!(kv.value, "Ni hao");
 
-        kv = btree.search("i".to_string())?;
-        assert_eq!(kv.key, "i");
+        kv = btree.search(&i.into_bytes())?;
+        assert_eq!(kv.key, i.into_bytes());
         assert_eq!(kv.value, "Ciao");
         Ok(())
     }
@@ -507,39 +520,45 @@ mod tests {
         use crate::node_type::{Key, KeyValuePair};
         use std::path::Path;
 
+        let a = Uuid::now_v7();
+        let b = Uuid::now_v7();
+        let c = Uuid::now_v7();
+        let d = Uuid::now_v7();
+        let e = Uuid::now_v7();
+        let f = Uuid::now_v7();
         let mut btree = BTreeBuilder::new()
             .path(Path::new("/tmp/db"))
             .b_parameter(2)
             .build()?;
-        btree.insert(KeyValuePair::new("d".to_string(), "olah".to_string()))?;
-        btree.insert(KeyValuePair::new("e".to_string(), "salam".to_string()))?;
-        btree.insert(KeyValuePair::new("f".to_string(), "hallo".to_string()))?;
-        btree.insert(KeyValuePair::new("a".to_string(), "shalom".to_string()))?;
-        btree.insert(KeyValuePair::new("b".to_string(), "hello".to_string()))?;
-        btree.insert(KeyValuePair::new("c".to_string(), "marhaba".to_string()))?;
+        btree.insert(KeyValuePair::new(d.into_bytes(), "olah".to_string()))?;
+        btree.insert(KeyValuePair::new(e.into_bytes(), "salam".to_string()))?;
+        btree.insert(KeyValuePair::new(f.into_bytes(), "hallo".to_string()))?;
+        btree.insert(KeyValuePair::new(a.into_bytes(), "shalom".to_string()))?;
+        btree.insert(KeyValuePair::new(b.into_bytes(), "hello".to_string()))?;
+        btree.insert(KeyValuePair::new(c.into_bytes(), "marhaba".to_string()))?;
 
-        let mut kv = btree.search("c".to_string())?;
-        assert_eq!(kv.key, "c");
+        let mut kv = btree.search(&c.into_bytes())?;
+        assert_eq!(kv.key, c.into_bytes());
         assert_eq!(kv.value, "marhaba");
 
-        btree.delete(Key("c".to_string()))?;
-        let mut res = btree.search("c".to_string());
+        btree.delete(Key(c.into_bytes()))?;
+        let mut res = btree.search(&c.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
 
-        kv = btree.search("d".to_string())?;
-        assert_eq!(kv.key, "d");
+        kv = btree.search(&d.into_bytes())?;
+        assert_eq!(kv.key, d.into_bytes());
         assert_eq!(kv.value, "olah");
 
-        btree.delete(Key("d".to_string()))?;
-        res = btree.search("d".to_string());
+        btree.delete(Key(d.into_bytes()))?;
+        res = btree.search(&d.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
 
-        btree.delete(Key("e".to_string()))?;
-        res = btree.search("e".to_string());
+        btree.delete(Key(e.into_bytes()))?;
+        res = btree.search(&e.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
 
-        btree.delete(Key("f".to_string()))?;
-        res = btree.search("f".to_string());
+        btree.delete(Key(f.into_bytes()))?;
+        res = btree.search(&f.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
 
         Ok(())
@@ -555,42 +574,51 @@ mod tests {
             .path(Path::new("/tmp/db"))
             .b_parameter(2)
             .build()?;
-        btree.insert(KeyValuePair::new("a".to_string(), "shalom".to_string()))?;
-        btree.insert(KeyValuePair::new("b".to_string(), "hello".to_string()))?;
-        btree.insert(KeyValuePair::new("c".to_string(), "marhaba".to_string()))?;
-        btree.insert(KeyValuePair::new("d".to_string(), "olah".to_string()))?;
-        btree.insert(KeyValuePair::new("e".to_string(), "salam".to_string()))?;
-        btree.insert(KeyValuePair::new("f".to_string(), "hallo".to_string()))?;
-        btree.insert(KeyValuePair::new("g".to_string(), "Konnichiwa".to_string()))?;
-        btree.insert(KeyValuePair::new("h".to_string(), "Ni hao".to_string()))?;
-        btree.insert(KeyValuePair::new("i".to_string(), "Ciao".to_string()))?;
+        let a = Uuid::now_v7();
+        let b = Uuid::now_v7();
+        let c = Uuid::now_v7();
+        let d = Uuid::now_v7();
+        let e = Uuid::now_v7();
+        let f = Uuid::now_v7();
+        let g = Uuid::now_v7();
+        let h = Uuid::now_v7();
+        let i = Uuid::now_v7();
+        btree.insert(KeyValuePair::new(a.into_bytes(), "shalom".to_string()))?;
+        btree.insert(KeyValuePair::new(b.into_bytes(), "hello".to_string()))?;
+        btree.insert(KeyValuePair::new(c.into_bytes(), "marhaba".to_string()))?;
+        btree.insert(KeyValuePair::new(d.into_bytes(), "olah".to_string()))?;
+        btree.insert(KeyValuePair::new(e.into_bytes(), "salam".to_string()))?;
+        btree.insert(KeyValuePair::new(f.into_bytes(), "hallo".to_string()))?;
+        btree.insert(KeyValuePair::new(g.into_bytes(), "Konnichiwa".to_string()))?;
+        btree.insert(KeyValuePair::new(h.into_bytes(), "Ni hao".to_string()))?;
+        btree.insert(KeyValuePair::new(i.into_bytes(), "Ciao".to_string()))?;
 
-        btree.delete(Key("g".to_string()))?;
-        let mut res = btree.search("g".to_string());
+        btree.delete(Key(g.into_bytes()))?;
+        let mut res = btree.search(&g.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
 
-        btree.delete(Key("h".to_string()))?;
-        res = btree.search("h".to_string());
+        btree.delete(Key(h.into_bytes()))?;
+        res = btree.search(&h.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
 
-        btree.delete(Key("a".to_string()))?;
-        res = btree.search("a".to_string());
+        btree.delete(Key(a.into_bytes()))?;
+        res = btree.search(&a.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
         
-        btree.delete(Key("b".to_string()))?;
-        res = btree.search("b".to_string());
+        btree.delete(Key(b.into_bytes()))?;
+        res = btree.search(&b.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
         
-        btree.delete(Key("c".to_string()))?;
-        res = btree.search("c".to_string());
+        btree.delete(Key(c.into_bytes()))?;
+        res = btree.search(&c.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
 
-        btree.delete(Key("d".to_string()))?;
-        res = btree.search("d".to_string());
+        btree.delete(Key(d.into_bytes()))?;
+        res = btree.search(&d.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
 
-        btree.delete(Key("e".to_string()))?;
-        res = btree.search("e".to_string());
+        btree.delete(Key(e.into_bytes()))?;
+        res = btree.search(&e.into_bytes());
         assert!(matches!(res, Err(Error::KeyNotFound)));
         Ok(())
     }

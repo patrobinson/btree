@@ -17,11 +17,11 @@ impl TryFrom<[u8; PTR_SIZE]> for Offset {
 }
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Debug)]
-pub struct Key(pub String);
+pub struct Key(pub [u8; 16]);
 
 #[derive(Clone, Eq, Debug)]
 pub struct KeyValuePair {
-    pub key: String,
+    pub key: [u8; 16],
     pub value: String,
 }
 
@@ -44,7 +44,7 @@ impl PartialEq for KeyValuePair {
 }
 
 impl KeyValuePair {
-    pub fn new(key: String, value: String) -> KeyValuePair {
+    pub fn new(key: [u8; 16], value: String) -> KeyValuePair {
         KeyValuePair { key, value }
     }
 }

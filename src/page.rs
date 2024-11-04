@@ -123,16 +123,7 @@ impl TryFrom<&Node> for Page {
                 }
 
                 for Key(key) in keys {
-                    let key_bytes = key.as_bytes();
-                    let mut raw_key: [u8; KEY_SIZE] = [0x00; KEY_SIZE];
-                    if key_bytes.len() > KEY_SIZE {
-                        return Err(Error::KeyOverflowError);
-                    } else {
-                        for (i, byte) in key_bytes.iter().enumerate() {
-                            raw_key[i] = *byte;
-                        }
-                    }
-                    data[page_offset..page_offset + KEY_SIZE].clone_from_slice(&raw_key);
+                    data[page_offset..page_offset + KEY_SIZE].clone_from_slice(key);
                     page_offset += KEY_SIZE
                 }
             }
@@ -144,16 +135,7 @@ impl TryFrom<&Node> for Page {
 
                 let mut page_offset = LEAF_NODE_HEADER_SIZE;
                 for pair in kv_pairs {
-                    let key_bytes = pair.key.as_bytes();
-                    let mut raw_key: [u8; KEY_SIZE] = [0x00; KEY_SIZE];
-                    if key_bytes.len() > KEY_SIZE {
-                        return Err(Error::KeyOverflowError);
-                    } else {
-                        for (i, byte) in key_bytes.iter().enumerate() {
-                            raw_key[i] = *byte;
-                        }
-                    }
-                    data[page_offset..page_offset + KEY_SIZE].clone_from_slice(&raw_key);
+                    data[page_offset..page_offset + KEY_SIZE].clone_from_slice(&pair.key);
                     page_offset += KEY_SIZE;
 
                     let value_bytes = pair.value.as_bytes();
@@ -198,6 +180,7 @@ impl TryFrom<&[u8]> for Value {
 #[cfg(test)]
 mod tests {
     use crate::error::Error;
+    use uuid::{uuid, Uuid};
 
     #[test]
     fn node_to_page_works_for_leaf_node() -> Result<(), Error> {
@@ -206,11 +189,14 @@ mod tests {
         use crate::page::Page;
         use std::convert::TryFrom;
 
+        const ID: Uuid = uuid!("0192f716-1f23-7a76-912f-34c661e13091");
+        const SECOND_ID: Uuid = uuid!("0192f7c6-ce15-7c08-a9bc-35789cdf190e");
+        const THIRD_ID: Uuid = uuid!("0192f7c8-4d74-7b13-9de5-64dbff09b9ff");
         let some_leaf = Node::new(
             NodeType::Leaf(vec![
-                KeyValuePair::new("foo".to_string(), "bar".to_string()),
-                KeyValuePair::new("lebron".to_string(), "james".to_string()),
-                KeyValuePair::new("ariana".to_string(), "grande".to_string()),
+                KeyValuePair::new(ID.into_bytes(), "bar".to_string()),
+                KeyValuePair::new(SECOND_ID.into_bytes(), "james".to_string()),
+                KeyValuePair::new(THIRD_ID.into_bytes(), "grande".to_string()),
             ]),
             true,
             None,
@@ -235,6 +221,9 @@ mod tests {
         use crate::page_layout::PAGE_SIZE;
         use std::convert::TryFrom;
 
+        const ID: Uuid = uuid!("0192f716-1f23-7a76-912f-34c661e13091");
+        const SECOND_ID: Uuid = uuid!("0192f7c6-ce15-7c08-a9bc-35789cdf190e");
+        const THIRD_ID: Uuid = uuid!("0192f7c8-4d74-7b13-9de5-64dbff09b9ff");
         let internal_node = Node::new(
             NodeType::Internal(
                 vec![
@@ -244,9 +233,9 @@ mod tests {
                     Offset(PAGE_SIZE * 4),
                 ],
                 vec![
-                    Key("foo bar".to_string()),
-                    Key("lebron".to_string()),
-                    Key("ariana".to_string()),
+                    Key(ID.into_bytes()),
+                    Key(SECOND_ID.into_bytes()),
+                    Key(THIRD_ID.into_bytes()),
                 ],
             ),
             true,

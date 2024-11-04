@@ -46,7 +46,7 @@ pub const MAX_SPACE_FOR_KEYS: usize =
     PAGE_SIZE - INTERNAL_NODE_HEADER_SIZE - MAX_SPACE_FOR_CHILDREN;
 
 /// Key, Value sizes.
-pub const KEY_SIZE: usize = 10;
+pub const KEY_SIZE: usize = 16;
 pub const VALUE_SIZE: usize = 10;
 
 /// Wrappers for converting byte to bool and back.

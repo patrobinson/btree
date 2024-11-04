@@ -96,13 +96,13 @@ impl TryFrom<Page> for Node {
                 // Number of keys is always one less than the number of children (i.e. branching factor)
                 for _i in 1..num_children {
                     let key_raw = page.get_ptr_from_offset(offset, KEY_SIZE);
-                    let key = match str::from_utf8(key_raw) {
+                    let key = match <&[u8; 16]>::try_from(key_raw) {
                         Ok(key) => key,
                         Err(_) => return Err(Error::UTF8Error),
                     };
                     offset += KEY_SIZE;
                     // Trim leading or trailing zeros.
-                    keys.push(Key(key.trim_matches(char::from(0)).to_string()));
+                    keys.push(Key(*key));
                 }
                 Ok(Node::new(
                     NodeType::Internal(children, keys),
@@ -118,7 +118,7 @@ impl TryFrom<Page> for Node {
 
                 for _i in 0..num_keys_val_pairs {
                     let key_raw = page.get_ptr_from_offset(offset, KEY_SIZE);
-                    let key = match str::from_utf8(key_raw) {
+                    let key = match <&[u8; 16]>::try_from(key_raw) {
                         Ok(key) => key,
                         Err(_) => return Err(Error::UTF8Error),
                     };
@@ -133,7 +133,7 @@ impl TryFrom<Page> for Node {
 
                     // Trim leading or trailing zeros.
                     pairs.push(KeyValuePair::new(
-                        key.trim_matches(char::from(0)).to_string(),
+                        *key,
                         value.trim_matches(char::from(0)).to_string(),
                     ))
                 }
@@ -161,18 +161,21 @@ mod tests {
     use crate::node_type::{Key, NodeType};
     use crate::page_layout::PAGE_SIZE;
     use std::convert::TryFrom;
+    use uuid::{uuid, Uuid};
 
     #[test]
     fn page_to_node_works_for_leaf_node() -> Result<(), Error> {
+        const ID: Uuid = uuid!("0192f716-1f23-7a76-912f-34c661e13091");
         const DATA_LEN: usize = LEAF_NODE_HEADER_SIZE + KEY_SIZE + VALUE_SIZE;
-        let page_data: [u8; DATA_LEN] = [
+        let mut page_data: [u8; DATA_LEN] = [
             0x01, // Is-Root byte.
             0x02, // Leaf Node type byte.
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Parent offset.
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // Number of Key-Value pairs.
-            0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00, // "hello"
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Empty
             0x77, 0x6f, 0x72, 0x6c, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, // "world"
         ];
+        page_data[18..34].copy_from_slice(&ID.into_bytes());
         let junk: [u8; PAGE_SIZE - DATA_LEN] = [0x00; PAGE_SIZE - DATA_LEN];
         let mut page = [0x00; PAGE_SIZE];
         for (to, from) in page.iter_mut().zip(page_data.iter().chain(junk.iter())) {
@@ -188,8 +191,10 @@ mod tests {
     #[test]
     fn page_to_node_works_for_internal_node() -> Result<(), Error> {
         use crate::node_type::Key;
+        const ID: Uuid = uuid!("0192f716-1f23-7a76-912f-34c661e13091");
+        const SECOND_ID: Uuid = uuid!("0192f7c6-ce15-7c08-a9bc-35789cdf190e");
         const DATA_LEN: usize = INTERNAL_NODE_HEADER_SIZE + 3 * PTR_SIZE + 2 * KEY_SIZE;
-        let page_data: [u8; DATA_LEN] = [
+        let mut page_data: [u8; DATA_LEN] = [
             0x01, // Is-Root byte.
             0x01, // Internal Node type byte.
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Parent offset.
@@ -197,9 +202,11 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, // 4096  (2nd Page)
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, // 8192  (3rd Page)
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x00, // 12288 (4th Page)
-            0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00, // "hello"
-            0x77, 0x6f, 0x72, 0x6c, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, // "world"
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Empty
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Empty
         ];
+        page_data[42..58].copy_from_slice(&ID.into_bytes());
+        page_data[58..74].copy_from_slice(&SECOND_ID.into_bytes());
         let junk: [u8; PAGE_SIZE - DATA_LEN] = [0x00; PAGE_SIZE - DATA_LEN];
 
         // Concatenate the two arrays; page_data and junk.
@@ -217,13 +224,13 @@ mod tests {
                 Some(key) => key,
                 None => return Err(Error::UnexpectedError),
             };
-            assert_eq!(first_key, "hello");
+            assert_eq!(*first_key, ID.into_bytes());
 
             let Key(second_key) = match keys.get(1) {
                 Some(key) => key,
                 None => return Err(Error::UnexpectedError),
             };
-            assert_eq!(second_key, "world");
+            assert_eq!(*second_key, SECOND_ID.into_bytes());
             return Ok(());
         }
 
@@ -234,27 +241,31 @@ mod tests {
     fn split_leaf_works() -> Result<(), Error> {
         use crate::node::Node;
         use crate::node_type::KeyValuePair;
+
+        const ID: Uuid = uuid!("0192f716-1f23-7a76-912f-34c661e13091");
+        const SECOND_ID: Uuid = uuid!("0192f7c6-ce15-7c08-a9bc-35789cdf190e");
+        const THIRD_ID: Uuid = uuid!("0192f7c8-4d74-7b13-9de5-64dbff09b9ff");
         let mut node = Node::new(
             NodeType::Leaf(vec![
-                KeyValuePair::new("foo".to_string(), "bar".to_string()),
-                KeyValuePair::new("lebron".to_string(), "james".to_string()),
-                KeyValuePair::new("ariana".to_string(), "grande".to_string()),
+                KeyValuePair::new(ID.into_bytes(), "bar".to_string()),
+                KeyValuePair::new(SECOND_ID.into_bytes(), "james".to_string()),
+                KeyValuePair::new(THIRD_ID.into_bytes(), "grande".to_string()),
             ]),
             true,
             None,
         );
 
         let (median, sibling) = node.split(2)?;
-        assert_eq!(median, Key("lebron".to_string()));
+        assert_eq!(median, Key(SECOND_ID.into_bytes()));
         assert_eq!(
             node.node_type,
             NodeType::Leaf(vec![
                 KeyValuePair {
-                    key: "foo".to_string(),
+                    key: ID.into_bytes(),
                     value: "bar".to_string()
                 },
                 KeyValuePair {
-                    key: "lebron".to_string(),
+                    key: SECOND_ID.into_bytes(),
                     value: "james".to_string()
                 }
             ])
@@ -262,7 +273,7 @@ mod tests {
         assert_eq!(
             sibling.node_type,
             NodeType::Leaf(vec![KeyValuePair::new(
-                "ariana".to_string(),
+                THIRD_ID.into_bytes(),
                 "grande".to_string()
             )])
         );
@@ -275,6 +286,10 @@ mod tests {
         use crate::node_type::NodeType;
         use crate::node_type::{Key, Offset};
         use crate::page_layout::PAGE_SIZE;
+
+        const ID: Uuid = uuid!("0192f716-1f23-7a76-912f-34c661e13091");
+        const SECOND_ID: Uuid = uuid!("0192f7c6-ce15-7c08-a9bc-35789cdf190e");
+        const THIRD_ID: Uuid = uuid!("0192f7c8-4d74-7b13-9de5-64dbff09b9ff");
         let mut node = Node::new(
             NodeType::Internal(
                 vec![
@@ -284,9 +299,9 @@ mod tests {
                     Offset(PAGE_SIZE * 4),
                 ],
                 vec![
-                    Key("foo bar".to_string()),
-                    Key("lebron".to_string()),
-                    Key("ariana".to_string()),
+                    Key(ID.into_bytes()),
+                    Key(SECOND_ID.into_bytes()),
+                    Key(THIRD_ID.into_bytes()),
                 ],
             ),
             true,
@@ -294,19 +309,19 @@ mod tests {
         );
 
         let (median, sibling) = node.split(2)?;
-        assert_eq!(median, Key("lebron".to_string()));
+        assert_eq!(median, Key(SECOND_ID.into_bytes()));
         assert_eq!(
             node.node_type,
             NodeType::Internal(
                 vec![Offset(PAGE_SIZE), Offset(PAGE_SIZE * 2)],
-                vec![Key("foo bar".to_string())]
+                vec![Key(ID.into_bytes())]
             )
         );
         assert_eq!(
             sibling.node_type,
             NodeType::Internal(
                 vec![Offset(PAGE_SIZE * 3), Offset(PAGE_SIZE * 4)],
-                vec![Key("ariana".to_string())]
+                vec![Key(THIRD_ID.into_bytes())]
             )
         );
         Ok(())

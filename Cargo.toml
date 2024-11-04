@@ -16,5 +16,5 @@ path = "src/lib.rs"
 
 [dependencies]
 byteorder = "1.3.4"
-uuid = { version = "0.8", features = ["serde", "v4"] }
+uuid = { version = "1.11.0", features = ["serde", "v4", "v7"] }
 memmap = "0.7.0"
